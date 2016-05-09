@@ -1,22 +1,25 @@
 package main
 
 import (
-	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"math/rand"
 	"net"
+	"pool"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-var nrOfMetrics int = 100000
+var nrOfMetrics int = 10000
 var server string = "127.0.0.1"
 var port int = 2003
 
+var idCounter int32
 var waitGrp sync.WaitGroup
 
 // create an array to hold some random strings
@@ -26,47 +29,35 @@ var alphabet [26]string = [26]string{
 	"november", "oscar", "papa", "quebec", "romeo", "sierra",
 	"tango", "uniform", "victor", "whiskey", "x-ray", "yankee", "zulu"}
 
-func main() {
-	numcpu := runtime.NumCPU()
+const (
+	pooledResources = 50 // The number of connections in our pool
+)
 
-	runtime.GOMAXPROCS(numcpu)
+type pooledConnection struct {
+	ID   int32
+	conn net.Conn
+}
 
-	// create a map for containing al metrics
-	metrics := make(map[string]int)
-
-	// calculate the necessary depth
-	depth := calculateDepth(nrOfMetrics)
-
-	for i := 0; i < nrOfMetrics; i++ {
-		// create new metric
-		var newMetric string
-		for {
-			newMetric = joinParts(createMetricParts(depth))
-			if !isNotNewMetric(newMetric, metrics) {
-				break
-			}
-		}
-		// ...and save new metric into map
-		metrics[newMetric]++
-	}
-
+// createConnection is the factory method that will be called by
+// the pool when a new connection is needed.
+func createConnection() (io.Closer, error) {
 	connection := net.JoinHostPort(server, strconv.Itoa(port))
+	id := atomic.AddInt32(&idCounter, 1)
 
 	conn, err := net.Dial("tcp", connection)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
+	log.Println("Create: New Connection", id)
+	return &pooledConnection{id, conn}, nil
+}
 
-	// start sending metrics to graphite
-	for key, _ := range metrics {
-		fmt.Printf("Starting client with metric %s\n", key)
-		// add 1 to waitGroup
-		waitGrp.Add(1)
-		go sendMetric(conn, key)
-
-	}
-	waitGrp.Wait()
+// Close implements the io.Closer interface so our tcp connection
+// can be managed by the pool. Close performs any resource
+// release management.
+func (connection *pooledConnection) Close() error {
+	log.Println("Close: Connection", connection.ID)
+	return nil
 }
 
 // create new metric based on a 'depth' random selections out of our alphabet
@@ -112,9 +103,14 @@ func calculateDepth(depth int) int64 {
 }
 
 // send a metric. Figures.
-func sendMetric(connection net.Conn, name string) {
+func sendMetric(name string, p *pool.Pool) {
 
-	defer waitGrp.Done()
+	// Acquire a connection from the pool.
+	conn, err := p.Acquire()
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
 	start := randomStart()
 	time.Sleep(time.Duration(start) * time.Second)
@@ -125,8 +121,53 @@ func sendMetric(connection net.Conn, name string) {
 		value := strconv.Itoa(rand.Intn(100))
 		metric := strings.Join([]string{name, value, tsp}, " ")
 
-		fmt.Printf("Sending %s\n", metric)
-		fmt.Fprintf(connection, metric+"\n")
+		log.Println("Sending", metric)
+		//		fmt.Fprintf(conn.conn, metric+"\n")
+		// Release the connection back to the pool.
+		p.Release(conn)
 		time.Sleep(1 * time.Minute)
 	}
+}
+
+func main() {
+	numcpu := runtime.NumCPU()
+	runtime.GOMAXPROCS(numcpu)
+
+	// create a pool to manage all connections
+	p, err := pool.New(createConnection, pooledResources)
+	if err != nil {
+		log.Println(err)
+	}
+
+	// create a map for containing al metrics
+	metrics := make(map[string]int)
+
+	// calculate the necessary depth
+	depth := calculateDepth(nrOfMetrics)
+
+	for i := 0; i < nrOfMetrics; i++ {
+		// create new metric
+		var newMetric string
+		for {
+			newMetric = joinParts(createMetricParts(depth))
+			if !isNotNewMetric(newMetric, metrics) {
+				break
+			}
+		}
+		// ...and save new metric into map
+		metrics[newMetric]++
+	}
+
+	// start sending metrics to graphite
+	for key, _ := range metrics {
+		log.Println("Starting client with metric", key)
+		// add 1 to waitGroup
+		waitGrp.Add(1)
+		go func(k string) {
+			sendMetric(key, p)
+			waitGrp.Done()
+		}(key)
+
+	}
+	waitGrp.Wait()
 }
