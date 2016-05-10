@@ -1,21 +1,20 @@
 package main
 
 import (
-	"io"
+	"fmt"
+	"gopkg.in/fatih/pool.v2"
 	"log"
 	"math/big"
 	"math/rand"
 	"net"
-	"pool"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
-var nrOfMetrics int = 10000
+var nrOfMetrics int = 100000
 var server string = "127.0.0.1"
 var port int = 2003
 
@@ -30,35 +29,8 @@ var alphabet [26]string = [26]string{
 	"tango", "uniform", "victor", "whiskey", "x-ray", "yankee", "zulu"}
 
 const (
-	pooledResources = 50 // The number of connections in our pool
+	poolCapacity = 20 // The number of connections in our pool
 )
-
-type pooledConnection struct {
-	ID   int32
-	conn net.Conn
-}
-
-// createConnection is the factory method that will be called by
-// the pool when a new connection is needed.
-func createConnection() (io.Closer, error) {
-	connection := net.JoinHostPort(server, strconv.Itoa(port))
-	id := atomic.AddInt32(&idCounter, 1)
-
-	conn, err := net.Dial("tcp", connection)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Create: New Connection", id)
-	return &pooledConnection{id, conn}, nil
-}
-
-// Close implements the io.Closer interface so our tcp connection
-// can be managed by the pool. Close performs any resource
-// release management.
-func (connection *pooledConnection) Close() error {
-	log.Println("Close: Connection", connection.ID)
-	return nil
-}
 
 // create new metric based on a 'depth' random selections out of our alphabet
 func createMetricParts(depth int64) []string {
@@ -103,14 +75,7 @@ func calculateDepth(depth int) int64 {
 }
 
 // send a metric. Figures.
-func sendMetric(name string, p *pool.Pool) {
-
-	// Acquire a connection from the pool.
-	conn, err := p.Acquire()
-	if err != nil {
-		log.Println(err)
-		return
-	}
+func sendMetric(name string, p pool.Pool) {
 
 	start := randomStart()
 	time.Sleep(time.Duration(start) * time.Second)
@@ -121,10 +86,17 @@ func sendMetric(name string, p *pool.Pool) {
 		value := strconv.Itoa(rand.Intn(100))
 		metric := strings.Join([]string{name, value, tsp}, " ")
 
-		log.Println("Sending", metric)
-		//		fmt.Fprintf(conn.conn, metric+"\n")
+		// Acquire a connection from the pool.
+		connection, err := p.Get()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		//		log.Println("Sending", metric)
+		fmt.Fprintf(connection, metric+"\n")
 		// Release the connection back to the pool.
-		p.Release(conn)
+		connection.Close()
 		time.Sleep(1 * time.Minute)
 	}
 }
@@ -133,8 +105,12 @@ func main() {
 	numcpu := runtime.NumCPU()
 	runtime.GOMAXPROCS(numcpu)
 
-	// create a pool to manage all connections
-	p, err := pool.New(createConnection, pooledResources)
+	// create factory function to be used with channel based pool
+	connection := net.JoinHostPort(server, strconv.Itoa(port))
+	factory := func() (net.Conn, error) { return net.Dial("tcp", connection) }
+
+	// create a channel based pool to manage all connections
+	p, err := pool.NewChannelPool(5, poolCapacity, factory)
 	if err != nil {
 		log.Println(err)
 	}
@@ -167,7 +143,9 @@ func main() {
 			sendMetric(key, p)
 			waitGrp.Done()
 		}(key)
-
 	}
+
 	waitGrp.Wait()
+	// Close pool. This means closing all connedctions in pool.
+	p.Close()
 }
