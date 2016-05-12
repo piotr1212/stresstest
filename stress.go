@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"gopkg.in/fatih/pool.v2"
 	"log"
@@ -14,10 +15,10 @@ import (
 	"time"
 )
 
-var nrOfMetrics int = 100000
-var server string = "127.0.0.1"
-var port int = 2003
-
+var nrOfMetrics int
+var poolCapacity int
+var port int
+var server string
 var idCounter int32
 var waitGrp sync.WaitGroup
 
@@ -28,9 +29,34 @@ var alphabet [26]string = [26]string{
 	"november", "oscar", "papa", "quebec", "romeo", "sierra",
 	"tango", "uniform", "victor", "whiskey", "x-ray", "yankee", "zulu"}
 
-const (
-	poolCapacity = 20 // The number of connections in our pool
-)
+func init() {
+	const (
+		defaultNrOfMetrics  = 20000
+		defaultPoolCapacity = 20
+		defaultPort         = 2003
+		defaultServer       = "127.0.0.1"
+
+		usageNrOfMetrics  = "the number of metrics being sent"
+		usagePoolCapacity = "the size of the pool of connections"
+		usagePort         = "the port to connect to"
+		usageServer       = "the server to connect to"
+	)
+	// define flag for nr of metrics
+	flag.IntVar(&nrOfMetrics, "nr_of_metrics", defaultNrOfMetrics, usageNrOfMetrics)
+	flag.IntVar(&nrOfMetrics, "n", defaultNrOfMetrics, usageNrOfMetrics+" (shorthand)")
+
+	// define flag for pool capacity
+	flag.IntVar(&poolCapacity, "pool_capacity", defaultPoolCapacity, usagePoolCapacity)
+	flag.IntVar(&poolCapacity, "pc", defaultPoolCapacity, usagePoolCapacity+" (shorthand)")
+
+	// define flag for port
+	flag.IntVar(&port, "port", defaultPort, usagePort)
+	flag.IntVar(&port, "po", defaultPort, usagePort+" (shorthand)")
+
+	// define flag for server
+	flag.StringVar(&server, "server", defaultServer, usageServer)
+	flag.StringVar(&server, "s", defaultServer, usageServer+"(shorthand)")
+}
 
 // create new metric based on a 'depth' random selections out of our alphabet
 func createMetricParts(depth int64) []string {
@@ -102,6 +128,9 @@ func sendMetric(name string, p pool.Pool) {
 }
 
 func main() {
+
+	flag.Parse()
+
 	numcpu := runtime.NumCPU()
 	runtime.GOMAXPROCS(numcpu)
 
