@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"math/rand"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -175,7 +176,8 @@ func main() {
 		// add 1 to waitGroup
 		waitGrp.Add(1)
 		go func(k string) {
-			sendMetric(key, p)
+			hostname, _ := os.Hostname()
+			sendMetric(strings.Join([]string{hostname, key}, "."), p)
 			waitGrp.Done()
 		}(key)
 	}
