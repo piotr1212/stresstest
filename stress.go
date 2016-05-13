@@ -19,6 +19,7 @@ var nrOfMetrics int
 var poolCapacity int
 var port int
 var server string
+var timeout int
 var idCounter int32
 var waitGrp sync.WaitGroup
 
@@ -35,11 +36,13 @@ func init() {
 		defaultPoolCapacity = 20
 		defaultPort         = 2003
 		defaultServer       = "127.0.0.1"
+		defaultTimeout      = 60
 
 		usageNrOfMetrics  = "the number of metrics being sent"
 		usagePoolCapacity = "the size of the pool of connections"
 		usagePort         = "the port to connect to"
 		usageServer       = "the server to connect to"
+		usageTimeout      = "timeout between sent messages of same metric"
 	)
 	// define flag for nr of metrics
 	flag.IntVar(&nrOfMetrics, "nr_of_metrics", defaultNrOfMetrics, usageNrOfMetrics)
@@ -56,6 +59,9 @@ func init() {
 	// define flag for server
 	flag.StringVar(&server, "server", defaultServer, usageServer)
 	flag.StringVar(&server, "s", defaultServer, usageServer+"(shorthand)")
+
+	flag.IntVar(&timeout, "timeout", defaultTimeout, usageTimeout)
+	flag.IntVar(&timeout, "t", defaultTimeout, usageTimeout)
 }
 
 // create new metric based on a 'depth' random selections out of our alphabet
@@ -123,7 +129,7 @@ func sendMetric(name string, p pool.Pool) {
 		fmt.Fprintf(connection, metric+"\n")
 		// Release the connection back to the pool.
 		connection.Close()
-		time.Sleep(1 * time.Minute)
+		time.Sleep(time.Duration(timeout) * time.Second)
 	}
 }
 
