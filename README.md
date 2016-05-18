@@ -4,13 +4,13 @@ Stress tool to test graphite install (initially).
 Usage of https://github.com/fatih/pool
 
 ## Setup
-
-git clone git@github.com:mlambrichs/stresstest.git
-
+> mkdir -p stress/bin stress/src
 Set GOPATH to GOPATH to your stresstest directory.
-
-Next, do a
+> export GOPATH=./stress
+Next, get pool src
 > go get gopkg.in/fatih/pool.v2
+Get the stresstest src
+> go get github.com/mlambrichs/stresstest
 
 ## Usage
 
