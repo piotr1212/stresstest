@@ -40,3 +40,9 @@ func TestGetTwoIndexes(t *testing.T) {
 		t.Error(`TestGetWithTwoIndexes should fail.`)
 	}
 }
+
+func TestLen(t *testing.T) {
+	if n.Len() != 26 {
+		t.Error(`TestLen() should return exact length of alphabet-array.`)
+	}
+}
