@@ -1,12 +1,13 @@
 package metric
 
 import (
+	"github.com/mlambrichs/stresstest/alphabet"
 	"strings"
 )
 
 type Metric []string
 
-func New(a Alphabet, depth int) *Metric {
+func New(a alphabet.Alphabet, depth int) *Metric {
 	var metric Metric = make([]string, depth)
 	for i := 0; i < depth; i++ {
 		metric[i], _ = a.Get()
