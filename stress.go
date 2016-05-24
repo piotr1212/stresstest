@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/mlambrichs/stresstest/alphabet"
+	"github.com/mlambrichs/stresstest/alphabet/file"
 	"gopkg.in/fatih/pool.v2"
 	"log"
 	"math/big"
@@ -17,19 +19,13 @@ import (
 )
 
 var nrOfMetrics int
+var path string
 var poolCapacity int
 var port int
 var server string
 var timeout int
 var idCounter int32
 var waitGrp sync.WaitGroup
-
-// create an array to hold some random strings
-var alphabet [26]string = [26]string{
-	"alfa", "bravo", "charlie", "delta", "echo", "foxtrot", "golf",
-	"hotel", "india", "julliett", "kilo", "lima", "mike",
-	"november", "oscar", "papa", "quebec", "romeo", "sierra",
-	"tango", "uniform", "victor", "whiskey", "x-ray", "yankee", "zulu"}
 
 func init() {
 	const (
@@ -40,6 +36,7 @@ func init() {
 		defaultTimeout      = 60
 
 		usageNrOfMetrics  = "the number of metrics being sent"
+		usagePath         = "the path of your inputfile containing alphabet"
 		usagePoolCapacity = "the size of the pool of connections"
 		usagePort         = "the port to connect to"
 		usageServer       = "the server to connect to"
@@ -48,6 +45,10 @@ func init() {
 	// define flag for nr of metrics
 	flag.IntVar(&nrOfMetrics, "nr_of_metrics", defaultNrOfMetrics, usageNrOfMetrics)
 	flag.IntVar(&nrOfMetrics, "n", defaultNrOfMetrics, usageNrOfMetrics+" (shorthand)")
+
+	// define flag for path
+	flag.StringVar(&path, "path", "", usagePath)
+	flag.StringVar(&path, "p", "", usagePath+" (shorthand)")
 
 	// define flag for pool capacity
 	flag.IntVar(&poolCapacity, "pool_capacity", defaultPoolCapacity, usagePoolCapacity)
@@ -66,10 +67,11 @@ func init() {
 }
 
 // create new metric based on a 'depth' random selections out of our alphabet
-func createMetricParts(depth int64) []string {
+func createMetricParts(alphabet alphabet.Alphabet, depth int64) []string {
 	metric := make([]string, depth)
 	for i := 0; int64(i) < depth; i++ {
-		metric[i] = alphabet[rand.Intn(len(alphabet))]
+		metric[i], _ = alphabet.Get(rand.Intn(alphabet.Len()))
+		//		metric[i] = alphabet[rand.Intn(len(alphabet))]
 	}
 	return metric
 }
@@ -91,10 +93,11 @@ func randomStart() int {
 }
 
 // calculate depth
-func calculateDepth(depth int) int64 {
-	d := big.NewInt(int64(depth))
+func calculateDepth(nrOfItems int) int64 {
+	log.Printf("calculateDepth with nr of items %d", nrOfItems)
+	d := big.NewInt(int64(nrOfItems))
 	k := int64(1)
-	n := int64(26)
+	n := int64(nrOfItems)
 
 	result := new(big.Int)
 
@@ -102,6 +105,7 @@ func calculateDepth(depth int) int64 {
 		if result.Binomial(n, k); result.Cmp(d) > 0 {
 			break
 		}
+		log.Printf("result = %s", result.Binomial(n, k).String())
 		k++
 	}
 	return k
@@ -154,21 +158,43 @@ func main() {
 	// create a map for containing al metrics
 	metrics := make(map[string]int)
 
-	// calculate the necessary depth
-	depth := calculateDepth(nrOfMetrics)
+	// get alphabet
+	var alphabet alphabet.Alphabet
 
-	for i := 0; i < nrOfMetrics; i++ {
-		// create new metric
-		var newMetric string
-		for {
-			newMetric = joinParts(createMetricParts(depth))
-			if !isNotNewMetric(newMetric, metrics) {
-				break
+	if path != "" {
+		alphabet = file.NewBuffer(path)
+		depth := calculateDepth(alphabet.Len())
+		log.Printf("Starting with %d metrics and depth %d", nrOfMetrics, depth)
+		for i := 0; i < nrOfMetrics; i++ {
+			// create new metric
+			var newMetric string
+			for {
+				newMetric = joinParts(createMetricParts(alphabet, depth))
+				if !isNotNewMetric(newMetric, metrics) {
+					break
+				}
 			}
+			// ...and save new metric into map
+			metrics[newMetric]++
 		}
-		// ...and save new metric into map
-		metrics[newMetric]++
+
+	} else {
+		depth := calculateDepth(nrOfMetrics)
+
+		for i := 0; i < nrOfMetrics; i++ {
+			// create new metric
+			var newMetric string
+			for {
+				newMetric = joinParts(createMetricParts(alphabet, depth))
+				if !isNotNewMetric(newMetric, metrics) {
+					break
+				}
+			}
+			// ...and save new metric into map
+			metrics[newMetric]++
+		}
 	}
+	log.Println("metrics", metrics)
 
 	// start sending metrics to graphite
 	for key, _ := range metrics {

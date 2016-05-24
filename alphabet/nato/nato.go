@@ -1,4 +1,4 @@
-package alphabet
+package nato
 
 import (
 	"errors"
