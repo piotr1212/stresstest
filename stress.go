@@ -105,7 +105,6 @@ func calculateDepth(nrOfItems int) int64 {
 		if result.Binomial(n, k); result.Cmp(d) > 0 {
 			break
 		}
-		log.Printf("result = %s", result.Binomial(n, k).String())
 		k++
 	}
 	return k
