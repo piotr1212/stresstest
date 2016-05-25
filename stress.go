@@ -11,20 +11,20 @@ import (
 	"log"
 	"math/big"
 	"net"
-	_ "os"
 	"runtime"
 	"strconv"
 	"sync"
 )
 
-var nrOfMetrics int
-var path string
-var poolCapacity int
-var port int
-var server string
-var timeout int
-var idCounter int32
-var waitGrp sync.WaitGroup
+var (
+	nrOfMetrics  int
+	path         string
+	poolCapacity int
+	port         int
+	server       string
+	timeout      int
+	waitGrp      sync.WaitGroup
+)
 
 func init() {
 	const (
@@ -66,7 +66,7 @@ func init() {
 }
 
 // check if meetric doesn't already exist
-func isNotNewMetric(metric metric.Metric, metrics map[string]metric.Metric) bool {
+func isNotNewMetric(metric metric.Metric, metrics map[string]int) bool {
 	_, ok := metrics[metric.String()]
 	return ok
 }
@@ -93,10 +93,17 @@ func calculateDepth(nrOfMetrics int, alphabethLength int) (k int, err error) {
 }
 
 func main() {
+	var (
+		alphabet alphabet.Alphabet
+		depth    int
+	)
 
+	// parse commandline flags
 	flag.Parse()
 
 	numcpu := runtime.NumCPU()
+	// GOMAXPROCS limits the number of operating system threads that can
+	// execute user-level Go code simultaneously
 	runtime.GOMAXPROCS(numcpu)
 
 	// create factory function to be used with channel based pool
@@ -110,48 +117,46 @@ func main() {
 	}
 
 	// create a map for containing al metrics
-	metrics := make(map[string]metric.Metric)
-
-	var (
-		alphabet alphabet.Alphabet
-		depth    int
-	)
+	metrics := make(map[string]int)
 
 	// select your alphabet
-	if path != "" {
+	switch path != "" {
+	case true:
 		alphabet = file.NewBuffer(path)
-	} else {
-		alphabet = nato.NewNato()
+	default:
+		var a nato.Nato
+		alphabet = a
 	}
+
+	// calculate the number of parts a metric should exist of
 	depth, err = calculateDepth(nrOfMetrics, alphabet.Len())
 	if err != nil {
 		log.Fatal(err)
-	} else {
-		log.Printf("Starting with %d metrics and depth %d", nrOfMetrics, depth)
-		for i := 0; i < nrOfMetrics; i++ {
-			// create new metric
-			var newMetric metric.Metric
-			for {
-				newMetric = metric.New(alphabet, depth)
-				if !isNotNewMetric(newMetric, metrics) {
-					break
-				}
+	}
+
+	log.Printf("Starting with %d metrics and depth %d", nrOfMetrics, depth)
+	for i := 0; i < nrOfMetrics; i++ {
+		// create new metric
+		var newMetric metric.Metric
+		for {
+			newMetric = metric.New(alphabet, depth)
+			if !isNotNewMetric(newMetric, metrics) {
+				break
 			}
-			// start sending right away
-			// add 1 to waitGroup
-			waitGrp.Add(1)
-			go func(m metric.Metric) {
-				//				hostname, _ := os.Hostname()
-				err := m.Send(p, timeout)
-				if err != nil {
-					log.Println(err)
-				}
-				waitGrp.Done()
-			}(newMetric)
-			// ...and save new metric into map
-			metrics[newMetric.String()] = newMetric
-			log.Printf("new metric %s", newMetric.String())
 		}
+		// add 1 to waitGroup
+		waitGrp.Add(1)
+		// ...and start sending right away
+		go func(m metric.Metric) {
+			err := m.Send(p, timeout)
+			if err != nil {
+				log.Println(err)
+			}
+			waitGrp.Done()
+		}(newMetric)
+		// ...and save new metric into map
+		metrics[newMetric.String()]++
+		log.Printf("new metric %s", newMetric.String())
 	}
 
 	waitGrp.Wait()

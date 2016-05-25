@@ -5,12 +5,19 @@ import (
 	"github.com/mlambrichs/stresstest/alphabet"
 	"gopkg.in/fatih/pool.v2"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Metric []string
+
+var hostname string
+
+func init() {
+	hostname, _ = os.Hostname()
+}
 
 func New(a alphabet.Alphabet, depth int) Metric {
 	var metric Metric = make([]string, depth)
@@ -35,7 +42,7 @@ func (m Metric) Send(p pool.Pool, timeout int) error {
 		tsp := strconv.FormatInt(time.Now().Unix(), 10)
 		// get random value
 		value := strconv.Itoa(rand.Intn(100))
-		metric := strings.Join([]string{m.String(), value, tsp}, " ")
+		metric := strings.Join([]string{strings.Replace(hostname, ".", "_", -1) + "." + m.String(), value, tsp}, " ")
 
 		// Acquire a connection from the pool.
 		connection, err := p.Get()
