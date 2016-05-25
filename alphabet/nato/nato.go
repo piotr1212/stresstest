@@ -13,6 +13,11 @@ var alphabet Nato = [26]string{
 	"november", "oscar", "papa", "quebec", "romeo", "sierra",
 	"tango", "uniform", "victor", "whiskey", "x-ray", "yankee", "zulu"}
 
+func NewNato() *Nato {
+	a := &alphabet
+	return a
+}
+
 func (n Nato) Get(i ...int) (metric string, err error) {
 
 	switch len(i) {
