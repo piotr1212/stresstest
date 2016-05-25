@@ -2,11 +2,11 @@ package metric
 
 import (
 	"fmt"
-	"github.com/mlambrichs/stresstest/alphabet"
+	"github.com/mlambrichs/stresstest/alphabet/nato"
 	"testing"
 )
 
-var a alphabet.Nato
+var a nato.Nato
 
 func TestNew(*testing.T) {
 	m := New(a, 3)
