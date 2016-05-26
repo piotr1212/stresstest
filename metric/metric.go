@@ -3,7 +3,7 @@ package metric
 import (
 	"fmt"
 	"github.com/mlambrichs/stresstest/alphabet"
-	"gopkg.in/fatih/pool.v2"
+	_ "gopkg.in/fatih/pool.v2"
 	"math/rand"
 	"os"
 	"strconv"
@@ -32,28 +32,15 @@ func (m Metric) String() string {
 	return strings.Join(m, ".")
 }
 
-// send a metric. Figures.
-func (m Metric) Send(p pool.Pool, timeout int) error {
-
+func (m Metric) Send(timeout int, c chan string) {
 	start := rand.Intn(59)
 	time.Sleep(time.Duration(start) * time.Second)
 	for {
-		// get timestamp
-		tsp := strconv.FormatInt(time.Now().Unix(), 10)
 		// get random value
 		value := strconv.Itoa(rand.Intn(100))
-		metric := strings.Join([]string{strings.Replace(hostname, ".", "_", -1) + "." + m.String(), value, tsp}, " ")
-
-		// Acquire a connection from the pool.
-		connection, err := p.Get()
-		if err != nil {
-			return err
-		}
-
-		//		log.Println("Sending", metric)
-		fmt.Fprintf(connection, metric+"\n")
-		// Release the connection back to the pool.
-		connection.Close()
+		// get timestamp
+		tsp := strconv.FormatInt(time.Now().Unix(), 10)
+		c <- fmt.Sprintf("%s.%s %s %s", strings.Replace(hostname, ".", "_", -1), m.String(), value, tsp)
 		time.Sleep(time.Duration(timeout) * time.Second)
 	}
 }

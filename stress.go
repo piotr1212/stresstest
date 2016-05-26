@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"github.com/mlambrichs/stresstest/alphabet"
 	"github.com/mlambrichs/stresstest/alphabet/file"
 	"github.com/mlambrichs/stresstest/alphabet/nato"
@@ -23,7 +24,8 @@ var (
 	port         int
 	server       string
 	timeout      int
-	waitGrp      sync.WaitGroup
+
+	waitGrp sync.WaitGroup
 )
 
 func init() {
@@ -146,14 +148,12 @@ func main() {
 		}
 		// add 1 to waitGroup
 		waitGrp.Add(1)
-		// ...and start sending right away
-		go func(m metric.Metric) {
-			err := m.Send(p, timeout)
-			if err != nil {
-				log.Println(err)
-			}
-			waitGrp.Done()
-		}(newMetric)
+		// open up a channel for this specific metric
+		c := make(chan string)
+		// ...and start generating metrics right away
+		go newMetric.Send(timeout, c)
+		// kick off the receiver
+		go receiver(p, c)
 		// ...and save new metric into map
 		metrics[newMetric.String()]++
 		log.Printf("new metric %s", newMetric.String())
@@ -162,4 +162,23 @@ func main() {
 	waitGrp.Wait()
 	// Close pool. This means closing all connedctions in pool.
 	p.Close()
+}
+
+func receiver(p pool.Pool, c chan string) {
+	var (
+		conn net.Conn
+		err  error
+	)
+	for {
+		msg := <-c
+		log.Printf("metric %s received", msg)
+		conn, err = p.Get()
+		if err != nil {
+			break
+		}
+		fmt.Fprintf(conn, msg)
+		conn.Close()
+	}
+	waitGrp.Done()
+	log.Fatalf("metric %s stopped", err)
 }
