@@ -176,7 +176,7 @@ func receiver(p pool.Pool, c chan string) {
 		if err != nil {
 			break
 		}
-		fmt.Fprintf(conn, msg)
+		fmt.Fprintf(conn, msg+"\n")
 		conn.Close()
 	}
 	waitGrp.Done()
